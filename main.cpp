@@ -196,7 +196,6 @@ int main(int argc, char *argv[])
     {
 
         LOG_INFO("%s", "epoll_wait等待连接");
-        //printf("epoll_wait\n");
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
         if (number < 0 && errno != EINTR)
         {
