@@ -1,0 +1,3 @@
+/home/mayj/exercise/TinyWebServer/cmake-build-debug-remote-host/CMakeFiles/rebuild_cache.dir
+/home/mayj/exercise/TinyWebServer/cmake-build-debug-remote-host/CMakeFiles/edit_cache.dir
+/home/mayj/exercise/TinyWebServer/cmake-build-debug-remote-host/CMakeFiles/TinyWebServer.dir

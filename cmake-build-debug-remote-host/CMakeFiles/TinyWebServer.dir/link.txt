@@ -1,0 +1,1 @@
+/usr/bin/c++   -g   CMakeFiles/TinyWebServer.dir/main.cpp.o CMakeFiles/TinyWebServer.dir/http/http_conn.cpp.o CMakeFiles/TinyWebServer.dir/log/log.cpp.o CMakeFiles/TinyWebServer.dir/CGImysql/sql_connection_pool.cpp.o  -o ../bin/TinyWebServer  -L/usr/lib64/mysql -lpthread -lmysqlclient -ldl -Wl,-rpath,/usr/lib64/mysql 
