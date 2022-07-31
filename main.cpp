@@ -89,6 +89,7 @@ void cb_func(client_data *user_data)
     Log::get_instance()->flush();
 }
 
+
 void show_error(int connfd, const char *info)
 {
     printf("%s", info);
