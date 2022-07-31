@@ -278,7 +278,7 @@ int main(int argc, char *argv[])
                 continue;
 #endif
             }
-                //处理异常事件,服务器端关闭连接
+            //处理异常事件,服务器端关闭连接
             else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
             {
                 // 如有异常，则直接关闭客户连接，并删除该用户的timer
@@ -291,7 +291,7 @@ int main(int argc, char *argv[])
                     timer_lst.del_timer(timer);
                 }
             }
-                //处理信号
+            //处理信号
             else if ((sockfd == pipefd[0]) && (events[i].events & EPOLLIN))
             {
                 int sig;
@@ -324,9 +324,10 @@ int main(int argc, char *argv[])
                     }
                 }
             }
-                //处理客户连接上接收到的数据
+            //处理客户连接上接收到的数据
             else if (events[i].events & EPOLLIN)
             {
+                //doing
                 printf("deal data\n");
                 util_timer *timer = users_timer[sockfd].timer;
                 /* 当这一sockfd上有可读事件时，epoll_wait通知主线程。*/
