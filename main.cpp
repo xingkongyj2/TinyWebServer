@@ -96,6 +96,8 @@ void show_error(int connfd, const char *info)
     close(connfd);
 }
 
+//主分支
+
 int main(int argc, char *argv[])
 {
 #ifdef ASYNLOG
