@@ -173,7 +173,6 @@ void http_conn::init()
 
 //从状态机，用于分析出一行内容
 //返回值为行的读取状态，有LINE_OK,LINE_BAD,LINE_OPEN
-//doing
 http_conn::LINE_STATUS http_conn::parse_line()
 {
     char temp;
