@@ -326,7 +326,6 @@ int main(int argc, char *argv[])
             //处理客户连接上接收到的数据
             else if (events[i].events & EPOLLIN)
             {
-                printf("deal data\n");
                 util_timer *timer = users_timer[sockfd].timer;
                 /* 当这一sockfd上有可读事件时，epoll_wait通知主线程。*/
                 if (users[sockfd].read_once())/* 主线程从这一sockfd循环读取数据, 直到没有更多数据可读 */
