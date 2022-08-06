@@ -208,8 +208,18 @@ http_conn::LINE_STATUS http_conn::parse_line()
 //循环读取客户数据，直到无数据可读或对方关闭连接
 //非阻塞ET工作模式下，需要一次性将数据读完
 //read_once读取浏览器端发送来的请求报文，直到无数据可读或对方关闭连接，读取到m_read_buffer中，并更新m_read_idx。
-//doing
 
+
+/*报文示例：
+GET / HTTP/1.1
+Host: 103.229.127.73:10000
+Connection: keep-alive
+        Cache-Control: max-age=0
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*;q=0.8,application/signed-exchange;v=b3;q=0.9
+Accept-Encoding: gzip, deflate
+Accept-Language: zh-CN,zh;q=0.9,en;q=0.8*/
 bool http_conn::read_once()
 {
     if (m_read_idx >= READ_BUFFER_SIZE)
@@ -219,7 +229,9 @@ bool http_conn::read_once()
     int bytes_read = 0;
 
 #ifdef connfdLT
-
+    //recv函数返回值详解](https://blog.csdn.net/hnlyyk/article/details/51143256)
+    //通过recv从内核态拷贝数据的时候，整个http报文已经在socket中了。
+    //todo：recv并没有一次性将所有数据拷贝到m_read_buf，只是拷贝了部分。为什么？
     bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
     m_read_idx += bytes_read;
 
@@ -258,11 +270,16 @@ bool http_conn::read_once()
 //解析http请求行，获得请求方法，目标url及http版本号
 http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
 {
+    //GET / HTTP/1.1
+    /* 在HTTP报文中，请求行用来说明请求类型,要访问的资源以及所使用的HTTP版本，其中各个部分之间通过\t或空格分隔。
+     * 请求行中最先含有空格和\t任一字符的位置并返回
+     * 依次检验字符串 str1 中的字符，当被检验字符在字符串 str2 中也包含时，则停止检验，并返回该字符位置。*/
     m_url = strpbrk(text, " \t");
     if (!m_url)
     {
         return BAD_REQUEST;
     }
+    //GET\0/ HTTP/1.1
     *m_url++ = '\0';
     char *method = text;
     if (strcasecmp(method, "GET") == 0)
@@ -274,28 +291,35 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
     }
     else
         return BAD_REQUEST;
+    //strspn 用于检索源字符串中第一个不在目的字符串中出现的字符下标。
+    //m_url此时跳过了第一个空格或\t字符，但不知道之后是否还有
+    //将m_url向后偏移，通过查找，继续跳过空格和\t字符，指向请求资源的第一个字符
     m_url += strspn(m_url, " \t");
     m_version = strpbrk(m_url, " \t");
     if (!m_version)
         return BAD_REQUEST;
     *m_version++ = '\0';
     m_version += strspn(m_version, " \t");
+    //仅支持HTTP/1.1
     if (strcasecmp(m_version, "HTTP/1.1") != 0)
         return BAD_REQUEST;
+    //对请求资源前7个字符进行判断
+    //这里主要是有些报文的请求资源中会带有http://，这里需要对这种情况进行单独处理
     if (strncasecmp(m_url, "http://", 7) == 0)
     {
         m_url += 7;
         m_url = strchr(m_url, '/');
     }
-
     if (strncasecmp(m_url, "https://", 8) == 0)
     {
         m_url += 8;
         m_url = strchr(m_url, '/');
     }
 
+    //一般的不会带有上述两种符号，直接是单独的/或/后面带访问资源
     if (!m_url || m_url[0] != '/')
         return BAD_REQUEST;
+
     //当url为/时，显示判断界面
     if (strlen(m_url) == 1)
         strcat(m_url, "judge.html");
@@ -306,30 +330,38 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
 //解析http请求的一个头部信息
 http_conn::HTTP_CODE http_conn::parse_headers(char *text)
 {
+    //判断是空行还是请求头
     if (text[0] == '\0')
     {
+        //判断是GET还是POST请求
         if (m_content_length != 0)
         {
+            //POST需要跳转到消息体处理状态
             m_check_state = CHECK_STATE_CONTENT;
             return NO_REQUEST;
         }
         return GET_REQUEST;
     }
+    //解析请求头部连接字段
     else if (strncasecmp(text, "Connection:", 11) == 0)
     {
+        //跳过空格和\t字符
         text += 11;
         text += strspn(text, " \t");
         if (strcasecmp(text, "keep-alive") == 0)
         {
+            //如果是长连接，则将linger标志设置为true
             m_linger = true;
         }
     }
+    //解析请求头部内容长度字段
     else if (strncasecmp(text, "Content-length:", 15) == 0)
     {
         text += 15;
         text += strspn(text, " \t");
         m_content_length = atol(text);
     }
+    //解析请求头部HOST字段
     else if (strncasecmp(text, "Host:", 5) == 0)
     {
         text += 5;
@@ -373,7 +405,7 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
 http_conn::HTTP_CODE http_conn::process_read()
 {
     //打印收到全部的数据
-    cout<<"\n【m_read_buf】:\n"<<m_read_buf<<endl;
+    cout<<m_read_buf<<endl;
 
     LINE_STATUS line_status = LINE_OK;
     HTTP_CODE ret = NO_REQUEST;
@@ -381,10 +413,10 @@ http_conn::HTTP_CODE http_conn::process_read()
 
     //主状态机m_check_state初始状态为：【解析请求行：CHECK_STATE_REQUESTLINE】，从状态机的状态初始状态为：【完整读取一行：LINE_OK】
     //todo：模拟get和post解析的过程
+    //parse_line()：将下一个要读取的行的\r\n变成\0\0
     while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status = parse_line()) == LINE_OK))
     {
         text = get_line();
-        cout<<"\n【text】:\n"<<text<<endl;
         m_start_line = m_checked_idx;
         //用'\0'作为读取字符串结束的标识
         LOG_INFO("%s", text);
@@ -747,6 +779,7 @@ bool http_conn::add_content(const char *content)
  */
 bool http_conn::process_write(HTTP_CODE ret)
 {
+    //doing
     switch (ret)
     {
         case INTERNAL_ERROR:

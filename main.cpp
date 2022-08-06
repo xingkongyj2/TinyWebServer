@@ -125,6 +125,11 @@ int main(int argc, char *argv[])
     threadpool<http_conn> *pool = NULL;
     try
     {
+        /* 默认创建8个线程，8个线程就已经运行起来了，在函数void threadpool<T>::run()中。
+         * 只是被信号量卡着了，等待m_queuestat.post释放一个资源。
+         * 也就是说此时一共有9个线程在运行。*/
+        /* 当read_once读取一次数据后，就将这个http_conn传入等待队列，调用m_queuestat.post。
+         * 接下来那个线程先运行，就调用对应http_conn的process函数*/
         pool = new threadpool<http_conn>(connPool);
     }
     catch (...)
@@ -211,7 +216,6 @@ int main(int argc, char *argv[])
             //客户端请求连接
             if (sockfd == listenfd)
             {
-                printf("socket connection\n");
                 LOG_INFO("%s", "处理新到的客户连接");
                 struct sockaddr_in client_address;
                 socklen_t client_addrlength = sizeof(client_address);
@@ -328,12 +332,14 @@ int main(int argc, char *argv[])
             {
                 util_timer *timer = users_timer[sockfd].timer;
                 /* 当这一sockfd上有可读事件时，epoll_wait通知主线程。*/
+                //read_once会一直读取，把整个http协议读完才进入if
                 if (users[sockfd].read_once())/* 主线程从这一sockfd循环读取数据, 直到没有更多数据可读 */
                 {
                     LOG_INFO("deal with the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
-                    cout<< "deal with the client(%s)"<<inet_ntoa(users[sockfd].get_address()->sin_addr)<<endl;
+                    cout<< "deal with the client: "<<inet_ntoa(users[sockfd].get_address()->sin_addr)<<endl;
                     Log::get_instance()->flush();
                     //若监测到读事件，将该事件放入请求队列
+                    //将这个用户http_conn的数组地址传进去
                     pool->append(users + sockfd);/* 然后将读取到的数据封装成一个请求对象并插入请求队列 */
 
                     //若有数据传输，则将定时器往后延迟3个单位
@@ -359,7 +365,6 @@ int main(int argc, char *argv[])
             else if (events[i].events & EPOLLOUT)
             {
                 /* 当这一sockfd上有可写事件时，epoll_wait通知主线程。主线程往socket上写入服务器处理客户请求的结果 */
-                cout<<"return data"<<endl;
                 util_timer *timer = users_timer[sockfd].timer;
                 if (users[sockfd].write())
                 {
