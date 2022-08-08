@@ -459,6 +459,7 @@ http_conn::HTTP_CODE http_conn::process_read()
     return NO_REQUEST;
 }
 
+//doing
 http_conn::HTTP_CODE http_conn::do_request()
 {
     //将初始化的m_real_file赋值为网站根目录
@@ -774,7 +775,7 @@ bool http_conn::add_content(const char *content)
 /**
  * 根据do_request的返回状态，服务器子线程调用process_write向m_write_buf中写入响应报文。
  * 服务器子线程调用process_write完成响应报文，随后注册epollout事件。服务器主线程检测写事件，并调用http_conn::write函数将响应报文发送给浏览器端。
- * @param ret
+ * @param ret：为process_read函数的返回值，是对请求的文件分析后的结果
  * @return
  */
 bool http_conn::process_write(HTTP_CODE ret)
@@ -846,6 +847,7 @@ bool http_conn::process_write(HTTP_CODE ret)
  * 各子线程通过process函数对任务进行处理，调用process_read函数和
  * process_write函数分别完成报文解析与报文响应两个任务。
  * */
+//业务处理从这里开始
 void http_conn::process()
 {
     //NO_REQUEST，表示请求不完整，需要继续接收请求数据
