@@ -106,11 +106,11 @@ int main(int argc, char *argv[])
 #ifdef SYNLOG
     Log::get_instance()->init("ServerLog", 2000, 800000, 0); //同步日志模型
 #endif
-    if (argc <= 1)
+    /*if (argc <= 1)
     {
         printf("usage: %s ip_address port_number\n", basename(argv[0]));
         return 1;
-    }
+    }*/
 
     int port = 10000;//atoi(argv[1]);
     printf("port %d\n",port);

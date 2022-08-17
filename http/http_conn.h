@@ -72,8 +72,11 @@ public:
         GET_REQUEST,
         //HTTP请求报文有语法错误
         BAD_REQUEST,
+        //请求资源不存在
         NO_RESOURCE,
+        //请求资源禁止访问，没有读取权限
         FORBIDDEN_REQUEST,
+        //请求资源可以正常访问
         FILE_REQUEST,
         //服务器内部错误，该结果在主状态机逻辑switch的default下，一般不会触发
         INTERNAL_ERROR,

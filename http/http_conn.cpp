@@ -459,6 +459,8 @@ http_conn::HTTP_CODE http_conn::process_read()
     return NO_REQUEST;
 }
 
+//网站根目录，文件夹内存放请求的资源和跳转的html文件
+//const char *doc_root = "/home/mayj/exercise/TinyWebServer/root"
 //doing
 http_conn::HTTP_CODE http_conn::do_request()
 {
@@ -466,7 +468,7 @@ http_conn::HTTP_CODE http_conn::do_request()
     strcpy(m_real_file, doc_root);
     int len = strlen(doc_root);
 
-    //找到m_url中/的位置
+    //找到m_url中/的位置。"/3CGISQL.cgi"
     const char *p = strrchr(m_url, '/');
 
     //处理cgi
@@ -524,8 +526,8 @@ http_conn::HTTP_CODE http_conn::do_request()
             else
                 strcpy(m_url, "/registerError.html");
         }
-            //如果是登录，直接判断
-            //若浏览器端输入的用户名和密码在表中可以查找到，返回1，否则返回0
+        //如果是登录，直接判断
+        //若浏览器端输入的用户名和密码在表中可以查找到，返回1，否则返回0
         else if (*(p + 1) == '2')
         {
             if (users.find(name) != users.end() && users[name] == password)
@@ -551,6 +553,8 @@ http_conn::HTTP_CODE http_conn::do_request()
     {
         char *m_url_real = (char *)malloc(sizeof(char) * 200);
         strcpy(m_url_real, "/log.html");
+
+        //将网站目录和/log.html进行拼接，更新到m_real_file中
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
 
         free(m_url_real);
@@ -775,7 +779,7 @@ bool http_conn::add_content(const char *content)
 /**
  * 根据do_request的返回状态，服务器子线程调用process_write向m_write_buf中写入响应报文。
  * 服务器子线程调用process_write完成响应报文，随后注册epollout事件。服务器主线程检测写事件，并调用http_conn::write函数将响应报文发送给浏览器端。
- * @param ret：为process_read函数的返回值，是对请求的文件分析后的结果
+ * @param ret 为process_read函数的返回值，是对请求的文件分析后的结果
  * @return
  */
 bool http_conn::process_write(HTTP_CODE ret)
@@ -795,7 +799,6 @@ bool http_conn::process_write(HTTP_CODE ret)
         }
         case BAD_REQUEST:
         {
-            //
             add_status_line(404, error_404_title);
             add_headers(strlen(error_404_form));
             if (!add_content(error_404_form))
