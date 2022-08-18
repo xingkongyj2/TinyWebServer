@@ -83,7 +83,6 @@ public:
         CLOSED_CONNECTION
     };
 
-
 public:
     http_conn() {}
     ~http_conn() {}
