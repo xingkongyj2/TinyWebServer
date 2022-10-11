@@ -468,7 +468,6 @@ http_conn::HTTP_CODE http_conn::process_read()
 //网站根目录，文件夹内存放请求的资源和跳转的html文件
 //const char *doc_root = "/home/mayj/exercise/TinyWebServer/root"
 //报文解析完成后进入这里
-//doing
 /**
  *
  * @return
@@ -726,7 +725,7 @@ bool http_conn::add_response(const char *format, ...)
     va_list arg_list;
     //将变量arg_list初始化为传入参数
     va_start(arg_list, format);
-    //将数据format从可变参数列表写入缓冲区写，返回写入数据的长度
+    //将数据format从可变参数列表写入缓冲区，返回写入数据的长度
     int len = vsnprintf(m_write_buf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, format, arg_list);
     //如果写入的数据长度超过缓冲区剩余空间，则报错
     if (len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx))
@@ -826,8 +825,10 @@ bool http_conn::process_write(HTTP_CODE ret)
                 return false;
             break;
         }
+        //正常访问
         case FILE_REQUEST:
         {
+            //添加状态行：http/1.1 状态码 状态消息
             add_status_line(200, ok_200_title);
             if (m_file_stat.st_size != 0)
             {
@@ -867,6 +868,7 @@ bool http_conn::process_write(HTTP_CODE ret)
 void http_conn::process()
 {
     //NO_REQUEST，表示请求不完整，需要继续接收请求数据
+    //FILE_REQUEST:文件可以正确读取
     HTTP_CODE read_ret = process_read();
     if (read_ret == NO_REQUEST)
     {
@@ -882,5 +884,7 @@ void http_conn::process()
         close_conn();
     }
     //注册并监听写事件
+    //到这里，接受到http报文解析后，并且将响应数据写入到向量机中。接下来就是epoll将数据发送出去。
     modfd(m_epollfd, m_sockfd, EPOLLOUT);
+
 }

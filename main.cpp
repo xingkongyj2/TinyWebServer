@@ -362,6 +362,7 @@ int main(int argc, char *argv[])
                     }
                 }
             }
+            //处理写事件
             else if (events[i].events & EPOLLOUT)
             {
                 /* 当这一sockfd上有可写事件时，epoll_wait通知主线程。主线程往socket上写入服务器处理客户请求的结果 */
