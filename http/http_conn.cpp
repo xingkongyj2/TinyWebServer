@@ -391,15 +391,16 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
 }
 
 /**
+ * 这里能解析到的数据一定是完整的http协议。
  * process_read通过while循环，将主从状态机进行封装，对报文的每一行进行循环处理。
- *   判断条件
- *     主状态机转移到CHECK_STATE_CONTENT，该条件涉及解析消息体
- *     从状态机转移到LINE_OK，该条件涉及解析请求行和请求头部
- *     两者为或关系，当条件为真则继续循环，否则退出
- *   循环体
- *     从状态机读取数据
- *     调用get_line函数，通过m_start_line将从状态机读取数据间接赋给text
- *     主状态机解析text
+ * 判断条件
+ *      主状态机转移到CHECK_STATE_CONTENT，该条件涉及解析消息体
+ *      从状态机转移到LINE_OK，该条件涉及解析请求行和请求头部
+ *      两者为或关系，当条件为真则继续循环，否则退出
+ * 循环体
+ *      从状态机读取数据
+ *      调用get_line函数，通过m_start_line将从状态机读取数据间接赋给text
+ *      主状态机解析text
  * @return
  */
 http_conn::HTTP_CODE http_conn::process_read()
@@ -416,6 +417,7 @@ http_conn::HTTP_CODE http_conn::process_read()
     //parse_line()：将下一个要读取的行的\r\n变成\0\0
     while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status = parse_line()) == LINE_OK))
     {
+        //parse_line将\r\n变成\0\0后，就读取一行出来。
         text = get_line();
         m_start_line = m_checked_idx;
         //用'\0'作为读取字符串结束的标识
@@ -426,6 +428,7 @@ http_conn::HTTP_CODE http_conn::process_read()
         switch (m_check_state)
         {
             //初始状态
+            //请求行：GET / HTTP/1.1\r\n
             case CHECK_STATE_REQUESTLINE:
             {
                 ret = parse_request_line(text);
@@ -433,6 +436,7 @@ http_conn::HTTP_CODE http_conn::process_read()
                     return BAD_REQUEST;
                 break;
             }
+            //请求头
             case CHECK_STATE_HEADER:
             {
                 ret = parse_headers(text);
@@ -440,10 +444,12 @@ http_conn::HTTP_CODE http_conn::process_read()
                     return BAD_REQUEST;
                 else if (ret == GET_REQUEST)
                 {
+                    //到这里说明get类型的报文解析完成了
                     return do_request();
                 }
                 break;
             }
+            //请求体：get请求没有
             case CHECK_STATE_CONTENT:
             {
                 ret = parse_content(text);
@@ -461,14 +467,20 @@ http_conn::HTTP_CODE http_conn::process_read()
 
 //网站根目录，文件夹内存放请求的资源和跳转的html文件
 //const char *doc_root = "/home/mayj/exercise/TinyWebServer/root"
+//报文解析完成后进入这里
 //doing
+/**
+ *
+ * @return
+ */
 http_conn::HTTP_CODE http_conn::do_request()
 {
     //将初始化的m_real_file赋值为网站根目录
     strcpy(m_real_file, doc_root);
     int len = strlen(doc_root);
 
-    //找到m_url中/的位置。"/3CGISQL.cgi"
+    //找到m_url中/的位置：
+    //m_url：url中文件路径
     const char *p = strrchr(m_url, '/');
 
     //处理cgi
@@ -595,6 +607,7 @@ http_conn::HTTP_CODE http_conn::do_request()
     if (stat(m_real_file, &m_file_stat) < 0)
         return NO_RESOURCE;
     //判断文件的权限，是否可读，不可读则返回FORBIDDEN_REQUEST状态
+    //至于权限，看是哪个用户启动了这个程序。
     if (!(m_file_stat.st_mode & S_IROTH))
         return FORBIDDEN_REQUEST;
     //判断文件类型，如果是目录，则返回BAD_REQUEST，表示请求报文有误
@@ -850,7 +863,7 @@ bool http_conn::process_write(HTTP_CODE ret)
  * 各子线程通过process函数对任务进行处理，调用process_read函数和
  * process_write函数分别完成报文解析与报文响应两个任务。
  * */
-//业务处理从这里开始
+//begin：http处理从这里开始
 void http_conn::process()
 {
     //NO_REQUEST，表示请求不完整，需要继续接收请求数据

@@ -175,13 +175,20 @@ private:
     int m_content_length;
     bool m_linger;
 
-    //读取服务器上的文件地址
+    //文件映射到内存中的地址
     char *m_file_address;
+    /**
+     * struct stat
+     * {
+     *      mode_t  st_mode;文件类型和权限
+     *      off_t   st_size;文件大小，字节数
+     * }
+     */
     struct stat m_file_stat;
     //io向量机制iovec
     struct iovec m_iv[2];
     int m_iv_count;
-    //是否启用的POST
+    //是否启用POST
     int cgi;
     //存储请求头数据
     char *m_string;
