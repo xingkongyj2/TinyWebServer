@@ -35,6 +35,7 @@ extern int setnonblocking(int fd);
 //设置定时器相关参数
 //pipefd是定时器通信使用的
 static int pipefd[2];
+//创建定时器容器链表
 static sort_timer_lst timer_lst;
 static int epollfd = 0;
 
@@ -66,7 +67,7 @@ void addsig(int sig, void(handler)(int), bool restart = true)
     if (restart)
         sa.sa_flags |= SA_RESTART;
     //可能在处理这里信号的过程中又有其他信号来，所以临时屏蔽掉其他信号。
-    //将某个信号集置1
+    //将信号集全部置1
     sigfillset(&sa.sa_mask);
     assert(sigaction(sig, &sa, NULL) != -1);
 }
@@ -78,12 +79,16 @@ void timer_handler()
     alarm(TIMESLOT);
 }
 
-//定时器回调函数，删除非活动连接在socket上的注册事件，并关闭
+//定时器回调函数
+
 void cb_func(client_data *user_data)
 {
+    //删除非活动连接在socket上的注册事件，并关闭
     epoll_ctl(epollfd, EPOLL_CTL_DEL, user_data->sockfd, 0);
     assert(user_data);
+    //关闭文件描述符
     close(user_data->sockfd);
+    //减少连接数
     http_conn::m_user_count--;
     LOG_INFO("close fd %d", user_data->sockfd);
     Log::get_instance()->flush();
@@ -185,13 +190,20 @@ int main(int argc, char *argv[])
     //[socketpair的用法和理解](https://blog.csdn.net/weixin_40039738/article/details/81095013)
     ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
     assert(ret != -1);
+    /**
+     * 设置管道写端为非阻塞，为什么写端要非阻塞？
+     * send是将信息发送给套接字缓冲区，如果缓冲区满了，则会阻塞，这时候会进一步增加信号处理函数的执行时间，为此，将其修改为非阻塞。
+     */
     setnonblocking(pipefd[1]);
+    //设置管道读端为ET非阻塞
     addfd(epollfd, pipefd[0], false);
 
+    //传递给主循环的信号值，这里只关注SIGALRM和SIGTERM
     addsig(SIGALRM, sig_handler, false);
     addsig(SIGTERM, sig_handler, false);
     bool stop_server = false;
 
+    //创建连接资源数组
     client_data *users_timer = new client_data[MAX_FD];
 
     bool timeout = false;
@@ -202,6 +214,7 @@ int main(int argc, char *argv[])
     {
 
         LOG_INFO("%s", "epoll_wait等待连接");
+        //监测发生事件的文件描述符
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
         if (number < 0 && errno != EINTR)
         {
@@ -217,9 +230,11 @@ int main(int argc, char *argv[])
             if (sockfd == listenfd)
             {
                 LOG_INFO("%s", "处理新到的客户连接");
+                //初始化客户端连接地址
                 struct sockaddr_in client_address;
                 socklen_t client_addrlength = sizeof(client_address);
 #ifdef listenfdLT
+                //该连接分配的文件描述符
                 int connfd = accept(listenfd, (struct sockaddr *)&client_address, &client_addrlength);
                 if (connfd < 0)
                 {
@@ -236,16 +251,21 @@ int main(int argc, char *argv[])
                 //与客户端建立连接后，将连接数据保存到对应的数组元素中
                 users[connfd].init(connfd, client_address);
 
-                //初始化client_data数据
-                //创建定时器，设置回调函数和超时时间，绑定用户数据，将定时器添加到链表中
+                //初始化该连接对应的连接资源
                 users_timer[connfd].address = client_address;
                 users_timer[connfd].sockfd = connfd;
+                //创建定时器临时变量
                 util_timer *timer = new util_timer;
+                //设置定时器对应的连接资源
                 timer->user_data = &users_timer[connfd];
+                //设置回调函数
                 timer->cb_func = cb_func;
                 time_t cur = time(NULL);
+                //设置绝对超时时间
                 timer->expire = cur + 3 * TIMESLOT;
+                //创建该连接对应的定时器，初始化为前述临时变量
                 users_timer[connfd].timer = timer;
+                //将该定时器添加到链表中
                 timer_lst.add_timer(timer);
 #endif
 
@@ -294,11 +314,15 @@ int main(int argc, char *argv[])
                     timer_lst.del_timer(timer);
                 }
             }
-            //处理信号
+            //处理信号：管道读端对应文件描述符发生读事件
+            //从管道读端读出信号值，成功返回字节数，失败返回-1
+            //正常情况下，这里的ret返回值总是1，只有14和15两个ASCII码对应的字符
             else if ((sockfd == pipefd[0]) && (events[i].events & EPOLLIN))
             {
                 int sig;
                 char signals[1024];
+                //从管道读端读出信号值，成功返回字节数，失败返回-1
+                //正常情况下，这里的ret返回值总是1，只有14和15两个ASCII码对应的字符
                 ret = recv(pipefd[0], signals, sizeof(signals), 0);
                 if (ret == -1)
                 {
@@ -310,10 +334,13 @@ int main(int argc, char *argv[])
                 }
                 else
                 {
+                    //处理信号值对应的逻辑
                     for (int i = 0; i < ret; ++i)
                     {
+                        //这里面明明是字符
                         switch (signals[i])
                         {
+                            //这里是整型
                             case SIGALRM:
                             {
                                 timeout = true;
@@ -330,6 +357,7 @@ int main(int argc, char *argv[])
             //处理客户连接上接收到的数据
             else if (events[i].events & EPOLLIN)
             {
+                //创建定时器临时变量，将该连接对应的定时器取出来
                 util_timer *timer = users_timer[sockfd].timer;
                 /* 当这一sockfd上有可读事件时，epoll_wait通知主线程。*/
                 //read_once会一直读取，把整个http协议读完才进入if
@@ -355,6 +383,7 @@ int main(int argc, char *argv[])
                 }
                 else
                 {
+                    //服务器端关闭连接，移除对应的定时器
                     timer->cb_func(&users_timer[sockfd]);
                     if (timer)
                     {
@@ -362,10 +391,13 @@ int main(int argc, char *argv[])
                     }
                 }
             }
+            //处理写事件
             else if (events[i].events & EPOLLOUT)
             {
                 /* 当这一sockfd上有可写事件时，epoll_wait通知主线程。主线程往socket上写入服务器处理客户请求的结果 */
                 util_timer *timer = users_timer[sockfd].timer;
+                //write：写数据给客户端。
+                //成功:长连接重置http类实例，注册读事件，不关闭连接。失败：短连接直接关闭连接
                 if (users[sockfd].write())
                 {
                     LOG_INFO("send data to the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
@@ -385,6 +417,7 @@ int main(int argc, char *argv[])
                 }
                 else
                 {
+                    //服务器端关闭连接，移除对应的定时器
                     timer->cb_func(&users_timer[sockfd]);
                     if (timer)
                     {
@@ -393,6 +426,8 @@ int main(int argc, char *argv[])
                 }
             }
         }
+        //处理定时器为非必须事件，收到信号并不是立马处理
+        //完成读写事件后，再进行处理
         if (timeout)
         {
             timer_handler();

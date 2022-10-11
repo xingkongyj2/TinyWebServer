@@ -468,7 +468,6 @@ http_conn::HTTP_CODE http_conn::process_read()
 //网站根目录，文件夹内存放请求的资源和跳转的html文件
 //const char *doc_root = "/home/mayj/exercise/TinyWebServer/root"
 //报文解析完成后进入这里
-//doing
 /**
  *
  * @return
@@ -637,6 +636,8 @@ void http_conn::unmap()
  * 服务器子线程调用process_write完成响应报文，随后注册epollout事件。服务器主线程检测写事件，并调用http_conn::write函数将响应报文发送给浏览器端。
  * @return
  */
+ //doing
+
 bool http_conn::write()
 {
     int temp = 0;
@@ -656,11 +657,15 @@ bool http_conn::write()
         //temp为发送的字节数
         temp = writev(m_sockfd, m_iv, m_iv_count);
 
+        //发送失败
         if (temp < 0)
         {
             //判断缓冲区是否满了
             if (errno == EAGAIN)
             {
+                //若eagain则满了，更新iovec结构体的指针和长度，并注册写事件，等待下一次写事件触发（当写缓冲区从不可写变为可写，触发epollout）。
+                // 因此在此期间无法立即接收到同一用户的下一请求，但可以保证连接的完整性。
+                //todo： 为什么要重新挂载，这个事件本身不还是EPOLLOUT状态吗？
                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
                 return true;
             }
@@ -673,6 +678,7 @@ bool http_conn::write()
         //更新已发送字节数
         bytes_to_send -= temp;
         //第一个iovec头部信息的数据已发送完，发送第二个iovec数据
+        //todo：向量机的用法
         if (bytes_have_send >= m_iv[0].iov_len)
         {
             //不再继续发送头部信息
@@ -680,7 +686,6 @@ bool http_conn::write()
             m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
             m_iv[1].iov_len = bytes_to_send;
         }
-
         else
         {
             //继续发送第一个iovec头部信息的数据
@@ -693,6 +698,7 @@ bool http_conn::write()
         {
             unmap();
             //在epoll树上重置EPOLLONESHOT事件
+            //todo：为什么设置成EPOLLIN。看epoll反应堆模型视频
             modfd(m_epollfd, m_sockfd, EPOLLIN);
 
             //浏览器的请求为长连接
@@ -726,7 +732,7 @@ bool http_conn::add_response(const char *format, ...)
     va_list arg_list;
     //将变量arg_list初始化为传入参数
     va_start(arg_list, format);
-    //将数据format从可变参数列表写入缓冲区写，返回写入数据的长度
+    //将数据format从可变参数列表写入缓冲区，返回写入数据的长度
     int len = vsnprintf(m_write_buf + m_write_idx, WRITE_BUFFER_SIZE - 1 - m_write_idx, format, arg_list);
     //如果写入的数据长度超过缓冲区剩余空间，则报错
     if (len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx))
@@ -797,7 +803,6 @@ bool http_conn::add_content(const char *content)
  */
 bool http_conn::process_write(HTTP_CODE ret)
 {
-    //doing
     switch (ret)
     {
         case INTERNAL_ERROR:
@@ -826,8 +831,10 @@ bool http_conn::process_write(HTTP_CODE ret)
                 return false;
             break;
         }
+        //正常访问
         case FILE_REQUEST:
         {
+            //添加状态行：http/1.1 状态码 状态消息
             add_status_line(200, ok_200_title);
             if (m_file_stat.st_size != 0)
             {
@@ -867,6 +874,7 @@ bool http_conn::process_write(HTTP_CODE ret)
 void http_conn::process()
 {
     //NO_REQUEST，表示请求不完整，需要继续接收请求数据
+    //FILE_REQUEST:文件可以正确读取
     HTTP_CODE read_ret = process_read();
     if (read_ret == NO_REQUEST)
     {
@@ -882,5 +890,7 @@ void http_conn::process()
         close_conn();
     }
     //注册并监听写事件
+    //到这里，接受到http报文解析后，并且将响应数据写入到向量机中。接下来就是epoll将数据发送出去。
     modfd(m_epollfd, m_sockfd, EPOLLOUT);
+
 }
