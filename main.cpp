@@ -124,7 +124,7 @@ int main(int argc, char *argv[])
     printf("创建数据库连接池\n");
     //创建数据库连接池
     connection_pool *connPool = connection_pool::GetInstance();
-    connPool->init("localhost", "root", "@Xingkong22", "webserver", 3306, 8);
+    connPool->init("localhost", "root", "Xingkong-22", "webserver", 3306, 8);
     printf("创建线程池\n");
     //创建线程池
     threadpool<http_conn> *pool = NULL;
