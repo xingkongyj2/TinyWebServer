@@ -186,6 +186,8 @@ private:
      */
     struct stat m_file_stat;
     //io向量机制iovec
+    //[struct iovec 结构体定义与使用_Still_Believe_的博客-CSDN博客_iovec头文件]
+    // (https://blog.csdn.net/baidu_15952103/article/details/109888362)
     struct iovec m_iv[2];
     int m_iv_count;
     //是否启用POST

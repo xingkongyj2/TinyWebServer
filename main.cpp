@@ -73,6 +73,7 @@ void addsig(int sig, void(handler)(int), bool restart = true)
 }
 
 //定时处理任务，重新定时以不断触发SIGALRM信号
+//上一个alarm结束后，并且通过tick函数处理了非活动的用户后，再重新设置一个alarm。
 void timer_handler()
 {
     timer_lst.tick();
@@ -80,7 +81,7 @@ void timer_handler()
 }
 
 //定时器回调函数
-
+//清理15秒内没有进行数据交换的fd
 void cb_func(client_data *user_data)
 {
     //删除非活动连接在socket上的注册事件，并关闭
@@ -102,8 +103,14 @@ void show_error(int connfd, const char *info)
     close(connfd);
 }
 
+extern char **environ;
+
 int main(int argc, char *argv[])
 {
+
+    for (int i = 0; environ[i] != NULL; i++) {
+        printf("%s\n", environ[i]);
+    }
 #ifdef ASYNLOG
     Log::get_instance()->init("ServerLog", 2000, 800000, 8); //异步日志模型
 #endif
@@ -120,6 +127,7 @@ int main(int argc, char *argv[])
     int port = 10000;//atoi(argv[1]);
     printf("port %d\n",port);
 
+    //使用SIG_IGN屏蔽SIGPIPE信号
     addsig(SIGPIPE, SIG_IGN);
     printf("创建数据库连接池\n");
     //创建数据库连接池
@@ -143,7 +151,7 @@ int main(int argc, char *argv[])
     }
 
     // 预先为每个可能的客户连接分配一个http_conn对象
-    http_conn *users = new http_conn[MAX_FD];
+    http_conn* users = new http_conn[MAX_FD];
     //如果它的条件返回错误，则终止程序执行。
     assert(users);
     printf("初始化数据库读取表\n");
@@ -184,10 +192,12 @@ int main(int argc, char *argv[])
     assert(epollfd != -1);
 
     addfd(epollfd, listenfd, false);
+    //epoll的文件描述符
     http_conn::m_epollfd = epollfd;
 
     //创建管道
     //[socketpair的用法和理解](https://blog.csdn.net/weixin_40039738/article/details/81095013)
+    //这对套接字可以用于全双工通信，每一个套接字既可以读也可以写。例如，可以往sv[0]中写，从sv[1]中读；或者从sv[1]中写，从sv[0]中读
     ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
     assert(ret != -1);
     /**
@@ -196,6 +206,7 @@ int main(int argc, char *argv[])
      */
     setnonblocking(pipefd[1]);
     //设置管道读端为ET非阻塞
+    //0为读端，1为写端。将pipefd[0]也挂载epoll上。当1写了信号，0就可读了。
     addfd(epollfd, pipefd[0], false);
 
     //传递给主循环的信号值，这里只关注SIGALRM和SIGTERM
@@ -248,7 +259,7 @@ int main(int argc, char *argv[])
                     continue;
                 }
                 /* 并将connfd注册到内核事件表中 */
-                //与客户端建立连接后，将连接数据保存到对应的数组元素中
+                //与客户端建立连接后，初始化这个http_conn类的数据
                 users[connfd].init(connfd, client_address);
 
                 //初始化该连接对应的连接资源
@@ -260,6 +271,7 @@ int main(int argc, char *argv[])
                 timer->user_data = &users_timer[connfd];
                 //设置回调函数
                 timer->cb_func = cb_func;
+                //整数类型 用来存储从1970年到现在经过了多少秒
                 time_t cur = time(NULL);
                 //设置绝对超时时间
                 timer->expire = cur + 3 * TIMESLOT;
@@ -359,7 +371,6 @@ int main(int argc, char *argv[])
             {
                 //创建定时器临时变量，将该连接对应的定时器取出来
                 util_timer *timer = users_timer[sockfd].timer;
-                /* 当这一sockfd上有可读事件时，epoll_wait通知主线程。*/
                 //read_once会一直读取，把整个http协议读完才进入if
                 if (users[sockfd].read_once())/* 主线程从这一sockfd循环读取数据, 直到没有更多数据可读 */
                 {
@@ -396,14 +407,11 @@ int main(int argc, char *argv[])
             {
                 /* 当这一sockfd上有可写事件时，epoll_wait通知主线程。主线程往socket上写入服务器处理客户请求的结果 */
                 util_timer *timer = users_timer[sockfd].timer;
-                //write：写数据给客户端。
                 //成功:长连接重置http类实例，注册读事件，不关闭连接。失败：短连接直接关闭连接
                 if (users[sockfd].write())
                 {
                     LOG_INFO("send data to the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
-                    cout<<"send data to the client(%s)"<<inet_ntoa(users[sockfd].get_address()->sin_addr)<<endl;
                     Log::get_instance()->flush();
-
                     //若有数据传输，则将定时器往后延迟3个单位
                     //并对新的定时器在链表上的位置进行调整
                     if (timer)
@@ -426,8 +434,8 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        //处理定时器为非必须事件，收到信号并不是立马处理
-        //完成读写事件后，再进行处理
+        //处理定时器为非必须事件，收到信号并不是立马处理，只是做一个标记。
+        //完成读写事件后，再进行处理。
         if (timeout)
         {
             timer_handler();

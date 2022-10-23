@@ -159,7 +159,7 @@ void Log::write_log(int level, const char *format, ...)
     log_str = m_buf;
 
     m_mutex.unlock();
-
+    //异步就先把数据写入到队列中
     if (m_is_async && !m_log_queue->full())
     {
         m_log_queue->push(log_str);

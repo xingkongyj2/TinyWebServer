@@ -22,7 +22,7 @@ const char *error_500_title = "Internal Error";
 const char *error_500_form = "There was an unusual problem serving the request file.\n";
 
 //当浏览器出现连接重置时，可能是网站根目录出错或http响应格式出错或者访问的文件中内容完全为空
-const char *doc_root = "/home/mayj/exercise/TinyWebServer/root";
+const char *doc_root = "/root/resource/tinywebserver/";
 
 //将表中的用户名和密码放入map
 map<string, string> users;
@@ -231,7 +231,6 @@ bool http_conn::read_once()
 #ifdef connfdLT
     //recv函数返回值详解](https://blog.csdn.net/hnlyyk/article/details/51143256)
     //通过recv从内核态拷贝数据的时候，整个http报文已经在socket中了。
-    //todo：recv并没有一次性将所有数据拷贝到m_read_buf，只是拷贝了部分。为什么？
     bytes_read = recv(m_sockfd, m_read_buf + m_read_idx, READ_BUFFER_SIZE - m_read_idx, 0);
     m_read_idx += bytes_read;
 
@@ -391,6 +390,7 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
 }
 
 /**
+ * 读取m_read_buf的报文并解析
  * 这里能解析到的数据一定是完整的http协议。
  * process_read通过while循环，将主从状态机进行封装，对报文的每一行进行循环处理。
  * 判断条件
@@ -406,14 +406,13 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
 http_conn::HTTP_CODE http_conn::process_read()
 {
     //打印收到全部的数据
-    cout<<m_read_buf<<endl;
+    //cout<<m_read_buf<<endl;
 
     LINE_STATUS line_status = LINE_OK;
     HTTP_CODE ret = NO_REQUEST;
     char *text = 0;
 
     //主状态机m_check_state初始状态为：【解析请求行：CHECK_STATE_REQUESTLINE】，从状态机的状态初始状态为：【完整读取一行：LINE_OK】
-    //todo：模拟get和post解析的过程
     //parse_line()：将下一个要读取的行的\r\n变成\0\0
     while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status = parse_line()) == LINE_OK))
     {
@@ -656,7 +655,6 @@ bool http_conn::write()
         //将响应报文的状态行、消息头、空行和响应正文发送给浏览器端
         //temp为发送的字节数
         temp = writev(m_sockfd, m_iv, m_iv_count);
-
         //发送失败
         if (temp < 0)
         {
@@ -665,7 +663,6 @@ bool http_conn::write()
             {
                 //若eagain则满了，更新iovec结构体的指针和长度，并注册写事件，等待下一次写事件触发（当写缓冲区从不可写变为可写，触发epollout）。
                 // 因此在此期间无法立即接收到同一用户的下一请求，但可以保证连接的完整性。
-                //todo： 为什么要重新挂载，这个事件本身不还是EPOLLOUT状态吗？
                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
                 return true;
             }
@@ -678,7 +675,6 @@ bool http_conn::write()
         //更新已发送字节数
         bytes_to_send -= temp;
         //第一个iovec头部信息的数据已发送完，发送第二个iovec数据
-        //todo：向量机的用法
         if (bytes_have_send >= m_iv[0].iov_len)
         {
             //不再继续发送头部信息
@@ -696,9 +692,9 @@ bool http_conn::write()
         //判断条件，数据已全部发送完
         if (bytes_to_send <= 0)
         {
+
             unmap();
             //在epoll树上重置EPOLLONESHOT事件
-            //todo：为什么设置成EPOLLIN。看epoll反应堆模型视频
             modfd(m_epollfd, m_sockfd, EPOLLIN);
 
             //浏览器的请求为长连接
@@ -879,6 +875,8 @@ void http_conn::process()
     if (read_ret == NO_REQUEST)
     {
         //注册并监听读事件
+        //注意一个问题：如果epoll触发了读事件，但是没读完，请求就是不完整的。如果不完整，这个fd需要重新挂在epoll吗？
+        //加这一步是更加保险。
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         return;
     }

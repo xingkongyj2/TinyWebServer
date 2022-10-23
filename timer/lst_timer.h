@@ -25,7 +25,6 @@ class util_timer
 public:
     util_timer() : prev(NULL), next(NULL) {}
 
-public:
     //超时时间
     time_t expire;
     //回调函数
